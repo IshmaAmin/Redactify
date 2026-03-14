@@ -41,17 +41,22 @@ export function PDFViewer({ pdfDocument, pageDimensions, spans, onToggleSpan, on
     if (!pdfDocument) return
     setRenderedPages(new Set())
 
+    let active = true
+
     const renderPage = async (pageIndex: number) => {
       const canvas = canvasRefs.current.get(pageIndex)
-      if (!canvas) return
+      if (!canvas || !active) return
 
-      // Cancel any in-flight render for this page
+      // Cancel any in-flight render for this page before starting a new one
       const existing = renderTaskRefs.current.get(pageIndex)
       if (existing) {
         try { existing.cancel() } catch { /* ignore */ }
+        renderTaskRefs.current.delete(pageIndex)
       }
 
       const page = await pdfDocument.getPage(pageIndex + 1)
+      if (!active) return
+
       const viewport = page.getViewport({ scale: SCALE })
       canvas.width = viewport.width
       canvas.height = viewport.height
@@ -59,11 +64,11 @@ export function PDFViewer({ pdfDocument, pageDimensions, spans, onToggleSpan, on
       const ctx = canvas.getContext('2d')!
       const task = page.render({ canvasContext: ctx, viewport })
       renderTaskRefs.current.set(pageIndex, task)
+
       try {
         await task.promise
-        setRenderedPages(prev => new Set([...prev, pageIndex]))
+        if (active) setRenderedPages(prev => new Set([...prev, pageIndex]))
       } catch (e: unknown) {
-        // RenderingCancelledException is expected when we cancel
         if (e instanceof Error && e.name !== 'RenderingCancelledException') {
           console.error('Render error:', e)
         }
@@ -72,6 +77,15 @@ export function PDFViewer({ pdfDocument, pageDimensions, spans, onToggleSpan, on
 
     for (let i = 0; i < pdfDocument.numPages; i++) {
       renderPage(i)
+    }
+
+    return () => {
+      // Cancel all in-flight renders when effect re-runs (e.g. StrictMode)
+      active = false
+      renderTaskRefs.current.forEach(task => {
+        try { task.cancel() } catch { /* ignore */ }
+      })
+      renderTaskRefs.current.clear()
     }
   }, [pdfDocument])
 

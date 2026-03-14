@@ -2,8 +2,7 @@ import type { TextItem, DetectedSpan } from '../types'
 
 type ProgressCallback = (progress: number, message: string) => void
 
-let pipeline: ((task: string, model: string, opts?: object) => Promise<unknown>) | null = null
-let nerPipeline: ((text: string) => Promise<NERResult[]>) | null = null
+type NERPipeline = (text: string) => Promise<NERResult[]>
 
 interface NERResult {
   word: string
@@ -13,23 +12,24 @@ interface NERResult {
   end: number
 }
 
+let nerPipeline: NERPipeline | null = null
+
 export async function loadNERModel(onProgress?: ProgressCallback): Promise<boolean> {
   try {
     onProgress?.(0, 'Loading NER model...')
 
-    const { pipeline: pipelineFn } = await import('@xenova/transformers')
-    pipeline = pipelineFn as typeof pipeline
+    const { pipeline, env } = await import('@huggingface/transformers')
 
-    nerPipeline = await (pipeline as NonNullable<typeof pipeline>)('ner', 'Xenova/bert-base-NER', {
+    // Single-threaded WASM — no SharedArrayBuffer required
+    env.backends.onnx.wasm.numThreads = 1
+
+    nerPipeline = await pipeline('token-classification', 'Xenova/bert-base-NER', {
       progress_callback: (info: { progress?: number; status?: string }) => {
         if (info.progress !== undefined) {
-          onProgress?.(
-            info.progress,
-            `Downloading model: ${Math.round(info.progress)}%`
-          )
+          onProgress?.(info.progress, `Downloading model: ${Math.round(info.progress)}%`)
         }
       },
-    }) as (text: string) => Promise<NERResult[]>
+    }) as unknown as NERPipeline
 
     onProgress?.(100, 'Model ready')
     return true
@@ -40,9 +40,7 @@ export async function loadNERModel(onProgress?: ProgressCallback): Promise<boole
   }
 }
 
-export async function detectNERSpans(
-  textItems: TextItem[]
-): Promise<DetectedSpan[]> {
+export async function detectNERSpans(textItems: TextItem[]): Promise<DetectedSpan[]> {
   if (!nerPipeline) return []
 
   const spans: DetectedSpan[] = []
@@ -54,7 +52,6 @@ export async function detectNERSpans(
   }
 
   for (const [pageIndex, items] of pages) {
-    // Build full text and char→item mapping
     let fullText = ''
     const charToItem: number[] = []
 
@@ -66,18 +63,17 @@ export async function detectNERSpans(
       }
     }
 
-    // Process in chunks to avoid token limits (~500 chars)
     const CHUNK_SIZE = 500
     for (let offset = 0; offset < fullText.length; offset += CHUNK_SIZE) {
       const chunk = fullText.slice(offset, offset + CHUNK_SIZE)
       let results: NERResult[]
       try {
-        results = await nerPipeline(chunk)
+        const raw = await nerPipeline(chunk)
+        results = Array.isArray(raw) ? raw as NERResult[] : []
       } catch {
         continue
       }
 
-      // Group consecutive tokens of same entity type
       const groups: Array<{ type: string; start: number; end: number; words: string[] }> = []
       for (const r of results) {
         const entityType = r.entity.replace(/^[BI]-/, '')
@@ -110,10 +106,7 @@ export async function detectNERSpans(
         const bottom = Math.max(...spanned.map(it => it.bbox.y + it.bbox.height))
 
         const typeMap: Record<string, string> = {
-          PER: 'PERSON',
-          LOC: 'LOCATION',
-          ORG: 'ORGANIZATION',
-          MISC: 'MISC',
+          PER: 'PERSON', LOC: 'LOCATION', ORG: 'ORGANIZATION', MISC: 'MISC',
         }
 
         spans.push({
