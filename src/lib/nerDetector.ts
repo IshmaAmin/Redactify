@@ -4,9 +4,11 @@ type ProgressCallback = (progress: number, message: string) => void
 
 type NERPipeline = (text: string) => Promise<NERResult[]>
 
+// With aggregation_strategy: 'simple', results are pre-grouped:
+// entity_group replaces entity, word is the full merged span
 interface NERResult {
   word: string
-  entity: string
+  entity_group: string
   score: number
   start: number
   end: number
@@ -24,6 +26,7 @@ export async function loadNERModel(onProgress?: ProgressCallback): Promise<boole
     env.backends.onnx.wasm.numThreads = 1
 
     nerPipeline = await pipeline('token-classification', 'Xenova/bert-base-NER', {
+      aggregation_strategy: 'simple',
       progress_callback: (info: { progress?: number; status?: string }) => {
         if (info.progress !== undefined) {
           onProgress?.(info.progress, `Downloading model: ${Math.round(info.progress)}%`)
@@ -74,29 +77,20 @@ export async function detectNERSpans(textItems: TextItem[]): Promise<DetectedSpa
         continue
       }
 
-      const groups: Array<{ type: string; start: number; end: number; words: string[] }> = []
+      const typeMap: Record<string, string> = {
+        // Keep NER output as generic categories (overriding fine-grained model labels)
+        PER: 'TEXT', LOC: 'TEXT', ORG: 'TEXT', MISC: 'TEXT',
+      }
+
       for (const r of results) {
-        const entityType = r.entity.replace(/^[BI]-/, '')
+        const entityType = r.entity_group
+        if (!['PER', 'LOC', 'ORG', 'MISC'].includes(entityType)) continue
+
         const absStart = offset + r.start
         const absEnd = offset + r.end
 
-        if (
-          r.entity.startsWith('B-') ||
-          groups.length === 0 ||
-          groups[groups.length - 1].type !== entityType
-        ) {
-          groups.push({ type: entityType, start: absStart, end: absEnd, words: [r.word] })
-        } else {
-          groups[groups.length - 1].end = absEnd
-          groups[groups.length - 1].words.push(r.word)
-        }
-      }
-
-      for (const group of groups) {
-        if (!['PER', 'LOC', 'ORG', 'MISC'].includes(group.type)) continue
-
-        const startItem = charToItem[Math.min(group.start, charToItem.length - 1)]
-        const endItem = charToItem[Math.min(group.end - 1, charToItem.length - 1)]
+        const startItem = charToItem[Math.min(absStart, charToItem.length - 1)]
+        const endItem = charToItem[Math.min(absEnd - 1, charToItem.length - 1)]
         if (startItem === undefined) continue
 
         const spanned = items.slice(startItem, (endItem ?? startItem) + 1)
@@ -105,13 +99,9 @@ export async function detectNERSpans(textItems: TextItem[]): Promise<DetectedSpa
         const right = Math.max(...spanned.map(it => it.bbox.x + it.bbox.width))
         const bottom = Math.max(...spanned.map(it => it.bbox.y + it.bbox.height))
 
-        const typeMap: Record<string, string> = {
-          PER: 'PERSON', LOC: 'LOCATION', ORG: 'ORGANIZATION', MISC: 'MISC',
-        }
-
         spans.push({
-          text: group.words.join(' ').replace(/\s?##/g, ''),
-          entityType: typeMap[group.type] ?? group.type,
+          text: r.word,
+          entityType: typeMap[entityType] ?? entityType,
           pageIndex,
           bbox: { x, y, width: right - x, height: bottom - y },
           confirmed: false,

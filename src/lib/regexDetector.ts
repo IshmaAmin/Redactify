@@ -7,7 +7,8 @@ interface Pattern {
 
 const PATTERNS: Pattern[] = [
   { type: 'EMAIL', regex: /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/g },
-  { type: 'PHONE', regex: /(?:\+?\d{1,3}[\s\-.]?)?\(?\d{2,4}\)?[\s\-.]?\d{2,4}[\s\-.]?\d{2,9}/g },
+  // Requires country code or area code format to avoid false positives
+  { type: 'TEXT', regex: /(?:\+\d{1,3}[\s\-.]?\(?\d{1,4}\)?[\s\-.]?\d{2,4}[\s\-.]?\d{2,4}[\s\-.]?\d{0,4}|\(\d{2,4}\)[\s\-.]?\d{3,4}[\s\-.]?\d{3,4}|\b\d{3}[\s\-\.]\d{3}[\s\-\.]\d{4}\b)/g },
   { type: 'IBAN', regex: /\b[A-Z]{2}\d{2}[A-Z0-9]{4,}\b/g },
   { type: 'CREDIT_CARD', regex: /\b(?:\d{4}[\s\-]?){3}\d{4}\b/g },
   { type: 'SSN', regex: /\b\d{3}-\d{2}-\d{4}\b/g },
