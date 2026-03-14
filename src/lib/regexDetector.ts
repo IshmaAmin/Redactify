@@ -5,6 +5,25 @@ interface Pattern {
   regex: RegExp
 }
 
+function normalizeEntityType(type: string): string {
+  switch (type) {
+    case 'DATE_OF_BIRTH':
+      return 'DATE'
+    case 'IBAN':
+    case 'CREDIT_CARD':
+    case 'SSN':
+    case 'AHV':
+    case 'PASSPORT':
+      return 'NUMBER'
+    case 'EMAIL':
+    case 'IP_ADDRESS':
+    case 'TEXT':
+      return 'TEXT'
+    default:
+      return type
+  }
+}
+
 const PATTERNS: Pattern[] = [
   { type: 'EMAIL', regex: /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/g },
   // Requires country code or area code format to avoid false positives
@@ -89,7 +108,7 @@ export function detectRegexSpans(textItems: TextItem[]): DetectedSpan[] {
 
         spans.push({
           text: matchText,
-          entityType: pattern.type,
+          entityType: normalizeEntityType(pattern.type),
           pageIndex,
           bbox: { x, y, width: right - x, height: bottom - y },
           confirmed: false,
