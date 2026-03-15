@@ -8,8 +8,6 @@ const TYPE_COLORS: Record<string, string> = {
   ORGANIZATION: 'bg-purple-100 text-purple-800',
   EMAIL: 'bg-yellow-100 text-yellow-800',
   TEXT: 'bg-orange-100 text-orange-800',
-  DATE: 'bg-teal-100 text-teal-800',
-  NUMBER: 'bg-indigo-100 text-indigo-800',
   IBAN: 'bg-red-100 text-red-800',
   CREDIT_CARD: 'bg-red-100 text-red-800',
   SSN: 'bg-red-100 text-red-800',

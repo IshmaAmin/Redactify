@@ -23,7 +23,10 @@ export async function loadNERModel(onProgress?: ProgressCallback): Promise<boole
     const { pipeline, env } = await import('@huggingface/transformers')
 
     // Single-threaded WASM — no SharedArrayBuffer required
-    env.backends.onnx.wasm.numThreads = 1
+    // Only enable the single‑threaded WASM backend if it exists in this environment
+    if (env.backends?.onnx?.wasm) {
+      env.backends.onnx.wasm.numThreads = 1
+    }
 
     nerPipeline = await pipeline('token-classification', 'Xenova/bert-base-NER', {
       aggregation_strategy: 'simple',
@@ -32,7 +35,7 @@ export async function loadNERModel(onProgress?: ProgressCallback): Promise<boole
           onProgress?.(info.progress, `Downloading model: ${Math.round(info.progress)}%`)
         }
       },
-    }) as unknown as NERPipeline
+    } as any) as unknown as NERPipeline
 
     onProgress?.(100, 'Model ready')
     return true
@@ -78,8 +81,7 @@ export async function detectNERSpans(textItems: TextItem[]): Promise<DetectedSpa
       }
 
       const typeMap: Record<string, string> = {
-        // Keep NER output as generic categories (overriding fine-grained model labels)
-        PER: 'TEXT', LOC: 'TEXT', ORG: 'TEXT', MISC: 'TEXT',
+        PER: 'PERSON', LOC: 'LOCATION', ORG: 'ORGANIZATION', MISC: 'MISC',
       }
 
       for (const r of results) {
