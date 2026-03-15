@@ -29,6 +29,18 @@ export async function encryptText(
   }
 }
 
+export async function encryptBytes(
+  key: CryptoKey,
+  bytes: ArrayBuffer
+): Promise<{ cipherBase64: string; iv: string }> {
+  const ivBytes = crypto.getRandomValues(new Uint8Array(12))
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: ivBytes }, key, bytes)
+  return {
+    cipherBase64: btoa(String.fromCharCode(...new Uint8Array(ciphertext))),
+    iv: btoa(String.fromCharCode(...ivBytes)),
+  }
+}
+
 export async function decryptText(
   key: CryptoKey,
   encryptedText: string,
@@ -38,4 +50,14 @@ export async function decryptText(
   const ivBytes = Uint8Array.from(atob(iv), c => c.charCodeAt(0))
   const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ivBytes }, key, cipherBytes)
   return new TextDecoder().decode(plain)
+}
+
+export async function decryptBytes(
+  key: CryptoKey,
+  cipherBase64: string,
+  iv: string
+): Promise<ArrayBuffer> {
+  const cipherBytes = Uint8Array.from(atob(cipherBase64), c => c.charCodeAt(0))
+  const ivBytes = Uint8Array.from(atob(iv), c => c.charCodeAt(0))
+  return crypto.subtle.decrypt({ name: 'AES-GCM', iv: ivBytes }, key, cipherBytes)
 }

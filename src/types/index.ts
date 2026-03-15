@@ -25,9 +25,12 @@ export interface RedactionItem extends DetectedSpan {
 }
 
 export interface KeyFile {
-  version: '1'
+  version: '2' | '1'
   keyHex: string
-  originalPdfBase64: string   // base64-encoded original PDF for perfect restoration
+  // v2: encrypted original for integrity; v1 (legacy) uses plaintext base64
+  encryptedOriginalBase64?: string
+  ivOriginal?: string
+  originalPdfBase64?: string
   redactions: Array<{
     id: string
     encryptedText: string

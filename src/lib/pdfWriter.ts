@@ -1,5 +1,6 @@
 import { PDFDocument, rgb } from 'pdf-lib'
 import type { RedactionItem, KeyFile } from '../types'
+import { decryptBytes, importKeyFromHex } from './cryptoUtils'
 
 export async function redactPDF(
   pdfBytes: ArrayBuffer,
@@ -36,9 +37,20 @@ export async function unredactPDF(
   _redactedPdfBytes: ArrayBuffer,
   keyFile: KeyFile,
 ): Promise<Uint8Array> {
-  // The key file stores the original PDF — return it directly for perfect restoration
-  const binary = atob(keyFile.originalPdfBase64)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-  return bytes
+  // v2: decrypt original PDF using AES-GCM
+  if (keyFile.encryptedOriginalBase64 && keyFile.ivOriginal) {
+    const key = await importKeyFromHex(keyFile.keyHex)
+    const plain = await decryptBytes(key, keyFile.encryptedOriginalBase64, keyFile.ivOriginal)
+    return new Uint8Array(plain)
+  }
+
+  // v1 legacy fallback (plaintext embedded)
+  if (keyFile.originalPdfBase64) {
+    const binary = atob(keyFile.originalPdfBase64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+    return bytes
+  }
+
+  throw new Error('Invalid key file: no original payload found')
 }

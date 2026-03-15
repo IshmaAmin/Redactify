@@ -124,7 +124,7 @@ export default function App() {
     try {
       const { key, keyHex } = await generateKey()
       const redactions: RedactionItem[] = await confirmRedactions(spans, key)
-      const kf = buildKeyFile(keyHex, redactions, pdfBytes)
+      const kf = await buildKeyFile(keyHex, key, redactions, pdfBytes)
       const output = await redactPDF(pdfBytes, redactions, pageDimensions)
 
       setRedactedBytes(output)

@@ -1,5 +1,5 @@
 import type { DetectedSpan, RedactionItem, KeyFile } from '../types'
-import { encryptText } from './cryptoUtils'
+import { encryptBytes, encryptText } from './cryptoUtils'
 
 function bboxOverlaps(
   a: { x: number; y: number; width: number; height: number },
@@ -67,21 +67,18 @@ export async function confirmRedactions(
   return items
 }
 
-export function buildKeyFile(
+export async function buildKeyFile(
   keyHex: string,
+  key: CryptoKey,
   redactions: RedactionItem[],
   originalPdfBytes: ArrayBuffer
-): KeyFile {
-  // Store original PDF as base64 so restoration is pixel-perfect
-  const bytes = new Uint8Array(originalPdfBytes)
-  let binary = ''
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
-  const originalPdfBase64 = btoa(binary)
-
+): Promise<KeyFile> {
+  const { cipherBase64, iv } = await encryptBytes(key, originalPdfBytes)
   return {
-    version: '1',
+    version: '2',
     keyHex,
-    originalPdfBase64,
+    encryptedOriginalBase64: cipherBase64,
+    ivOriginal: iv,
     redactions: redactions.map(r => ({
       id: r.id,
       encryptedText: r.encryptedText,
