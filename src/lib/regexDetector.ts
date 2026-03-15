@@ -142,6 +142,10 @@ export function detectRegexSpans(textItems: TextItem[]): DetectedSpan[] {
 
         if (!isFinite(x1) || !isFinite(x2) || !isFinite(y1) || !isFinite(y2)) continue
 
+        // Pad a bit on the left to ensure the value is fully covered
+        const pad = 2
+        x1 -= pad
+
         spans.push({
           text: matchText,
           entityType: pattern.type,
