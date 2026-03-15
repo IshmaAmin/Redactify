@@ -28,7 +28,8 @@ export async function loadNERModel(onProgress?: ProgressCallback): Promise<boole
       env.backends.onnx.wasm.numThreads = 1
     }
 
-    nerPipeline = await pipeline('token-classification', 'Xenova/bert-base-NER', {
+    // Multilingual NER (covers en/de/fr/it/es)
+    nerPipeline = await pipeline('token-classification', 'Davlan/xlm-roberta-base-ner-hrl', {
       aggregation_strategy: 'simple',
       progress_callback: (info: { progress?: number; status?: string }) => {
         if (info.progress !== undefined) {

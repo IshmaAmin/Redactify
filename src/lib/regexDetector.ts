@@ -11,11 +11,10 @@ const PATTERNS: Pattern[] = [
   { type: 'EMAIL', regex: /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/g },
   // Phone (intl / NANP / CH formats)
   { type: 'PHONE', regex: /(?:\+\d{1,3}[\s\-.]?\(?\d{1,4}\)?[\s\-.]?\d{2,4}[\s\-.]?\d{2,4}[\s\-.]?\d{0,4}|\(\d{2,4}\)[\s\-.]?\d{3,4}[\s\-.]?\d{3,4}|\b\d{3}[\s\-\.]\d{3}[\s\-\.]\d{4}\b)/g },
-  // Address lines like "Seestrasse 88", "123 Main St", "Bahnhofstrasse 12"
-  // Uses Unicode letters to support accents; hyphen explicit at start to avoid range
-  { type: 'ADDRESS', regex: /\b(?:[-\p{L}\p{M}'.]{3,}\s)+(?:strasse|straße|street|st\.?|road|rd\.?|avenue|ave\.?|boulevard|blvd\.?|weg|platz|allee|lane|ln\.?|drive|dr\.?)\s*\d+[A-Za-z0-9\/-]*\b/giu },
-  // Name labels (backup when NER misses)
-  { type: 'NAME', regex: /\b(?:Name|Recipient|Insured person|Patient)[:\s]+([A-Z][A-Za-z'’.-]+\s+[A-Z][A-Za-z'’.-]+)\b/gi },
+  // Address lines (EU LTR: de/en/fr/it/es) e.g., "Seestrasse 88", "123 Main St", "Via Roma 12", "Calle 10"
+  { type: 'ADDRESS', regex: /\b(?:[-\p{L}\p{M}'.]{3,}\s)+(?:strasse|straße|street|st\.?|road|rd\.?|avenue|ave\.?|boulevard|blvd\.?|weg|platz|allee|lane|ln\.?|drive|dr\.?|rue|route|chemin|impasse|all[eé]e|quai|place|piazza|via|viale|corso|largo|calle|avenida|paseo)\s*\d+[A-Za-z0-9\/-]*\b/giu },
+  // Name labels (backup when NER misses) in en/de/fr/it/es
+  { type: 'NAME', regex: /\b(?:Name|Recipient|Insured person|Patient|Nom|Assur[eé]|Patient|Destinataire|Nome|Assicurato|Paziente|Nombre|Asegurado|Paciente)[:\s]+([A-Z][A-Za-z'’.-]+\s+[A-Z][A-Za-z'’.-]+)\b/gi },
   { type: 'IBAN', regex: /\b[A-Z]{2}\d{2}[A-Z0-9]{4,}\b/g },
   { type: 'BANK_ACCOUNT', regex: /\b(?:Account|Acct|ACCT|Acct\\.|Konto)[:\\s#-]*[A-Z0-9]{8,20}\b/gi },
   { type: 'CREDIT_CARD', regex: /\b(?:\d{4}[\s\-]?){3}\d{4}\b/g },
