@@ -6,6 +6,8 @@ interface Pattern {
 }
 
 const PATTERNS: Pattern[] = [
+  // Swiss-focused combined PII (AHV, IBAN, CH phones, postal+street, policy-like, email)
+  { type: 'SWISS_PII', regex: new RegExp(String.raw`\b(756[\.\s]?\d{4}[\.\s]?\d{4}[\.\s]?\d{2}|CH\d{2}(?:\s?\d{4}){4}\s?\d|\+41\s?\d{2}\s?\d{3}\s?\d{2}\s?\d{2}|0041\s?\d{2}\s?\d{3}\s?\d{2}\s?\d{2}|0\d{2}\s?\d{3}\s?\d{2}\s?\d{2}|[1-9][0-9]{3}\s[A-Za-zäöüÄÖÜß\-]+|[A-Z]{2,5}-\d{2,6}-\d{2,6}(?:-\d{2,6})?|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b`, 'giu') },
   { type: 'EMAIL', regex: /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/g },
   // Phone (intl / NANP / CH formats)
   { type: 'PHONE', regex: /(?:\+\d{1,3}[\s\-.]?\(?\d{1,4}\)?[\s\-.]?\d{2,4}[\s\-.]?\d{2,4}[\s\-.]?\d{0,4}|\(\d{2,4}\)[\s\-.]?\d{3,4}[\s\-.]?\d{3,4}|\b\d{3}[\s\-\.]\d{3}[\s\-\.]\d{4}\b)/g },
@@ -61,9 +63,11 @@ export function detectRegexSpans(textItems: TextItem[]): DetectedSpan[] {
     // Build a full-text string and track char→item mapping
     let fullText = ''
     const charMap: Array<{ itemIndex: number; charOffset: number }> = []
+    const itemStarts: number[] = []
 
     for (let i = 0; i < items.length; i++) {
       const start = fullText.length
+      itemStarts[i] = start
       fullText += items[i].str + ' '
       for (let c = 0; c < items[i].str.length + 1; c++) {
         charMap.push({ itemIndex: i, charOffset: start + c })
@@ -75,7 +79,7 @@ export function detectRegexSpans(textItems: TextItem[]): DetectedSpan[] {
       let match: RegExpExecArray | null
 
       while ((match = pattern.regex.exec(fullText)) !== null) {
-        const matchText = (match[1] ?? match[0]).trim()
+        let matchText = (match[1] ?? match[0]).trim()
         if (!matchText) continue
 
         // Skip credit cards that fail Luhn
@@ -85,7 +89,22 @@ export function detectRegexSpans(textItems: TextItem[]): DetectedSpan[] {
         const groupStartOffset = match[1]
           ? match[0].indexOf(match[1])
           : 0
-        const startIdx = match.index + groupStartOffset
+        let startIdx = match.index + groupStartOffset
+
+        // If a label like "Name:" is included in the match (no capture group case),
+        // trim everything up to the first colon so only the value is redacted.
+        if (!match[1]) {
+          const colonPos = matchText.indexOf(':')
+          if (colonPos !== -1 && colonPos <= 20 && colonPos + 1 < matchText.length) {
+            const after = matchText.slice(colonPos + 1).trimStart()
+            const offsetIntoMatch = match[0].indexOf(after)
+            if (after && offsetIntoMatch !== -1) {
+              startIdx = match.index + offsetIntoMatch
+              matchText = after
+            }
+          }
+        }
+
         const endIdx = startIdx + matchText.length - 1
 
         const startItemIndex = charMap[startIdx]?.itemIndex
@@ -93,20 +112,41 @@ export function detectRegexSpans(textItems: TextItem[]): DetectedSpan[] {
 
         if (startItemIndex === undefined) continue
 
-        // Merge bboxes across spanned items
-        const spannedItems = items.slice(startItemIndex, (endItemIndex ?? startItemIndex) + 1)
-        if (spannedItems.length === 0) continue
+        // Compute a tighter bbox that only covers the matched substring
+        const lastIdx = endItemIndex ?? startItemIndex
+        let x1 = Number.POSITIVE_INFINITY
+        let y1 = Number.POSITIVE_INFINITY
+        let x2 = Number.NEGATIVE_INFINITY
+        let y2 = Number.NEGATIVE_INFINITY
 
-        const x = Math.min(...spannedItems.map(it => it.bbox.x))
-        const y = Math.min(...spannedItems.map(it => it.bbox.y))
-        const right = Math.max(...spannedItems.map(it => it.bbox.x + it.bbox.width))
-        const bottom = Math.max(...spannedItems.map(it => it.bbox.y + it.bbox.height))
+        for (let i = startItemIndex; i <= lastIdx; i++) {
+          const item = items[i]
+          const itemStart = itemStarts[i]
+          const itemEnd = itemStart + item.str.length - 1
+
+          const coveredStart = Math.max(startIdx, itemStart)
+          const coveredEnd = Math.min(endIdx, itemEnd)
+          if (coveredStart > coveredEnd) continue
+
+          const relStart = coveredStart - itemStart
+          const relEnd = coveredEnd - itemStart
+          const widthPerChar = item.str.length > 0 ? item.bbox.width / item.str.length : 0
+          const subX1 = item.bbox.x + widthPerChar * relStart
+          const subX2 = item.bbox.x + widthPerChar * (relEnd + 1)
+
+          x1 = Math.min(x1, subX1)
+          x2 = Math.max(x2, subX2)
+          y1 = Math.min(y1, item.bbox.y)
+          y2 = Math.max(y2, item.bbox.y + item.bbox.height)
+        }
+
+        if (!isFinite(x1) || !isFinite(x2) || !isFinite(y1) || !isFinite(y2)) continue
 
         spans.push({
           text: matchText,
           entityType: pattern.type,
           pageIndex,
-          bbox: { x, y, width: right - x, height: bottom - y },
+          bbox: { x: x1, y: y1, width: x2 - x1, height: y2 - y1 },
           confirmed: false,
           source: 'regex',
         })
